@@ -13,7 +13,10 @@ export default merge(common, {
       patterns: [
         { from: 'img', to: 'img' },
         { from: 'css', to: 'css' },
-        { from: 'js', to: 'js' },  // Copy all JS files including components and utils
+        // Copy JS components and utils separately to avoid conflict with webpack entry
+        { from: 'js/components', to: 'js/components' },
+        { from: 'js/utils', to: 'js/utils' },
+        { from: 'js/vendor', to: 'js/vendor', noErrorOnMissing: true },
         { from: 'icon.svg', to: 'icon.svg', noErrorOnMissing: true },
         { from: 'favicon.ico', to: 'favicon.ico', noErrorOnMissing: true },
         { from: 'robots.txt', to: 'robots.txt', noErrorOnMissing: true },
