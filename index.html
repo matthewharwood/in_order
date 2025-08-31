@@ -20,29 +20,20 @@
 
   <link rel="manifest" href="site.webmanifest">
   <meta name="theme-color" content="#fafafa">
-  
-  <!-- idb-keyval for persistent storage -->
-  <script src="https://unpkg.com/idb-keyval@6/dist/umd.js"></script>
+
 </head>
 
 <body>
+  <theme-toggle></theme-toggle>
 
-  <!-- Game Settings Button -->
-  <game-settings></game-settings>
+  <main style="padding: 2rem; max-width: 1200px; margin: 0 auto;">
+    <h1 style="text-align: center; font-family: var(--font-sans); color: var(--color-text-primary); margin-bottom: 2rem;">
+      Number Ordering Game
+    </h1>
+    
+    <number-card-container></number-card-container>
+  </main>
 
-  <!-- Game Title -->
-  <h1 class="game-title">Order Game</h1>
-
-  <!-- Add your site or application content here -->
-  
-  <!-- NumberCard Container Wrapper -->
-  <div id="container-wrapper">
-    <number-card-container total-cards="5" min-range="0" max-range="100" winning-mode="asc"></number-card-container>
-  </div>
-  
-  <!-- Inventory Toolbar -->
-  <game-inventory></game-inventory>
-  
   <script type="module" src="js/app.js"></script>
 
 </body>

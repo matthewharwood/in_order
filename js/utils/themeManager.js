@@ -1,28 +1,31 @@
-// Theme manager using idb-keyval for persistent storage
+import { get } from './storage.js';
 
-export async function getTheme() {
+export async function initializeTheme() {
   try {
-    const theme = await window.idbKeyval.get('theme');
-    return theme || 'dark'; // Default to dark theme
+    // Get saved theme from idb
+    const savedTheme = await get('theme');
+    
+    if (savedTheme) {
+      // Apply saved theme
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      return savedTheme;
+    }
+    
+    // No saved theme, check system preference
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const defaultTheme = prefersDark ? 'dark' : 'light';
+    
+    // Apply default theme
+    document.documentElement.setAttribute('data-theme', defaultTheme);
+    
+    return defaultTheme;
   } catch (error) {
-    console.error('Error getting theme:', error);
+    console.error('Error initializing theme:', error);
+    // Fallback to dark theme
+    document.documentElement.setAttribute('data-theme', 'dark');
     return 'dark';
   }
 }
 
-export async function setTheme(theme) {
-  try {
-    await window.idbKeyval.set('theme', theme);
-    document.documentElement.setAttribute('data-theme', theme);
-    return true;
-  } catch (error) {
-    console.error('Error setting theme:', error);
-    return false;
-  }
-}
-
-export async function initializeTheme() {
-  const theme = await getTheme();
-  document.documentElement.setAttribute('data-theme', theme);
-  return theme;
-}
+// Initialize theme immediately to prevent flash
+initializeTheme();

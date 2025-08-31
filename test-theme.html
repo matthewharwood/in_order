@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Theme Toggle Test</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: var(--font-sans);
+      background-color: var(--color-background);
+      transition: background-color 0.3s ease;
+    }
+
+    .test-container {
+      background: var(--color-surface);
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: var(--shadow-lg);
+      max-width: 500px;
+      text-align: center;
+    }
+
+    h1 {
+      color: var(--color-text-primary);
+      margin-bottom: 1rem;
+    }
+
+    p {
+      color: var(--color-text-secondary);
+      margin-bottom: 1.5rem;
+    }
+
+    .theme-info {
+      background: var(--color-surface-variant);
+      padding: 1rem;
+      border-radius: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+    }
+
+    .theme-info span {
+      color: var(--color-primary);
+      font-weight: bold;
+    }
+
+    .instructions {
+      margin-top: 2rem;
+      padding: 1rem;
+      background: var(--color-warning-bg);
+      border: 2px solid var(--color-warning-border);
+      border-radius: 0.5rem;
+      color: var(--color-warning-dark);
+    }
+  </style>
+</head>
+<body>
+  <theme-toggle></theme-toggle>
+
+  <div class="test-container">
+    <h1>Theme Toggle Test</h1>
+    <p>Click the button in the top-right corner to toggle between light and dark themes.</p>
+    
+    <div class="theme-info">
+      Current theme: <span id="current-theme">detecting...</span>
+    </div>
+
+    <div class="instructions">
+      <strong>Test Instructions:</strong>
+      <ol style="text-align: left;">
+        <li>Toggle the theme using the button</li>
+        <li>Refresh the page - theme should persist</li>
+        <li>Open dev tools and check IndexedDB for saved theme</li>
+        <li>Clear storage and refresh - should use system preference</li>
+      </ol>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+  <script type="module">
+    import { get } from './js/utils/storage.js';
+    
+    // Update theme display
+    async function updateThemeDisplay() {
+      const theme = document.documentElement.getAttribute('data-theme') || 'not set';
+      document.getElementById('current-theme').textContent = theme;
+      
+      // Also show saved value
+      try {
+        const savedTheme = await get('theme');
+        if (savedTheme) {
+          document.getElementById('current-theme').textContent = `${theme} (saved: ${savedTheme})`;
+        }
+      } catch (e) {
+        console.error('Error reading saved theme:', e);
+      }
+    }
+
+    // Initial update
+    updateThemeDisplay();
+
+    // Watch for theme changes
+    const observer = new MutationObserver(() => {
+      updateThemeDisplay();
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme']
+    });
+  </script>
+</body>
+</html>

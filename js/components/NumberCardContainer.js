@@ -1,846 +1,404 @@
+import { get, set } from '../utils/storage.js';
 import { generateRandomNumbers } from '../utils/randomNumbers.js';
-import { debouncedSave } from '../utils/stateManager.js';
-import { audioManager } from '../utils/audioManager.js';
-import { animate } from 'animejs';
-import { isIPad, getIPadDelay } from '../utils/ipadFix.js';
 
-export class NumberCardContainer extends HTMLElement {
+class NumberCardContainer extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
     this._numbers = [];
-    this.slots = [];
-    this.winnerAudio = null;
-    this.isUserInteraction = false; // Track if change is from user drag/drop
+    this._draggedElement = null;
+    this._containerKey = '';
   }
 
   static get observedAttributes() {
-    return ['total-cards', 'min-range', 'max-range', 'winning-mode'];
+    return ['total-cards', 'min-range', 'max-range', 'container-id', 'card-size'];
   }
 
-  connectedCallback() {
+  async connectedCallback() {
+    this.setupContainerKey();
+    await this.initializeNumbers();
     this.render();
     this.setupDragAndDrop();
-    // Don't preload audio - it causes unwanted playback
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
-    if (oldValue !== newValue) {
-      this.render();
-      this.setupDragAndDrop();
+    if (oldValue !== newValue && this.isConnected) {
+      this.setupContainerKey();
+      this.initializeNumbers().then(() => {
+        this.render();
+        this.setupDragAndDrop();
+      });
     }
   }
 
+  setupContainerKey() {
+    // Create unique key for this container instance
+    const containerId = this.getAttribute('container-id') || 'default';
+    this._containerKey = `numberContainer_${containerId}`;
+  }
 
-  generateNumbers() {
-    let totalCards = parseInt(this.getAttribute('total-cards')) || 5;
-    // Limit to maximum 8 cards
-    totalCards = Math.min(totalCards, 8);
-    
-    const minRange = parseInt(this.getAttribute('min-range')) || 0;
-    const maxRange = parseInt(this.getAttribute('max-range')) || 100;
-    this._numbers = generateRandomNumbers(totalCards, minRange, maxRange);
-    console.log('Generated numbers:', this._numbers);
+  async initializeNumbers() {
+    const totalCards = Number(this.getAttribute('total-cards')) || 5;
+    const minRange = Number(this.getAttribute('min-range')) || 0;
+    const maxRange = Number(this.getAttribute('max-range')) || 100;
+
+    // Validate total cards (2-8)
+    const validatedTotal = Math.min(Math.max(totalCards, 2), 8);
+
+    try {
+      // Try to load from idb first
+      const savedState = await get(this._containerKey);
+      
+      if (savedState && savedState.numbers && savedState.numbers.length === validatedTotal) {
+        console.log(`Loaded numbers from storage for ${this._containerKey}:`, savedState.numbers);
+        this._numbers = savedState.numbers;
+      } else {
+        // Generate new random numbers
+        this._numbers = generateRandomNumbers(validatedTotal, minRange, maxRange);
+        console.log(`Generated new numbers for ${this._containerKey}:`, this._numbers);
+        
+        // Save to idb
+        await this.saveState();
+      }
+    } catch (error) {
+      console.error('Error initializing numbers:', error);
+      // Fallback to generating new numbers
+      this._numbers = generateRandomNumbers(validatedTotal, minRange, maxRange);
+    }
+  }
+
+  async saveState() {
+    try {
+      const state = {
+        numbers: this._numbers,
+        timestamp: Date.now(),
+        totalCards: this._numbers.length,
+        minRange: Number(this.getAttribute('min-range')) || 0,
+        maxRange: Number(this.getAttribute('max-range')) || 100
+      };
+      
+      await set(this._containerKey, state);
+      console.log(`Saved state for ${this._containerKey}:`, state);
+    } catch (error) {
+      console.error('Error saving state:', error);
+    }
   }
 
   render() {
-    this.generateNumbers();
-    const winningMode = this.getAttribute('winning-mode') || 'asc';
-    
+    const cardSize = this.getAttribute('card-size') || 'medium';
+    const totalCards = this._numbers.length;
+
     this.shadowRoot.innerHTML = `
       <style>
         :host {
           display: block;
-          padding: var(--space-4, 1rem);
+          padding: 1rem;
         }
-        
+
         .container {
-          padding: var(--space-4, 1rem);
-          background-color: var(--color-surface, #fafaf9);
-          border: 2px solid var(--color-border, #e7e5e4);
-          border-radius: var(--radius-lg, 0.5rem);
+          background: var(--color-surface-variant, #e7e5e4);
+          border-radius: var(--radius-xl, 0.75rem);
+          padding: 1.5rem;
+          min-height: 150px;
+          box-shadow: var(--shadow-md);
           transition: all 0.3s ease;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
-        
-        /* Light mode winner state */
-        [data-theme="light"] .container.winner {
-          background: linear-gradient(135deg, 
-            #ecfdf5 0%, 
-            #d1fae5 100%);
-          border: 3px solid #10b981;
-          box-shadow: 
-            0 0 30px rgba(16, 185, 129, 0.3),
-            0 4px 12px rgba(16, 185, 129, 0.2);
+
+        .container.drag-active {
+          background: var(--color-warning-bg, #fef9c3);
+          border: 2px dashed var(--color-warning-border, #fde047);
         }
-        
-        /* Dark mode winner state */
-        [data-theme="dark"] .container.winner {
-          background: linear-gradient(135deg, 
-            rgba(250, 204, 21, 0.15) 0%,
-            rgba(250, 204, 21, 0.25) 50%,
-            rgba(139, 92, 246, 0.15) 100%);
-          border: 3px solid #10b981;
-          box-shadow: 
-            0 0 40px rgba(250, 204, 21, 0.5),
-            0 0 80px rgba(139, 92, 246, 0.3),
-            0 0 30px rgba(16, 185, 129, 0.4),
-            inset 0 0 20px rgba(250, 204, 21, 0.2);
-        }
-        
-        @keyframes winner-pulse-light {
-          0%, 100% { 
-            transform: scale(1);
-            box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
-          }
-          50% { 
-            transform: scale(1.02);
-            box-shadow: 0 0 50px rgba(16, 185, 129, 0.5);
-          }
-        }
-        
-        @keyframes winner-pulse-dark {
-          0%, 100% { 
-            transform: scale(1);
-            box-shadow: 
-              0 0 40px rgba(250, 204, 21, 0.5),
-              0 0 80px rgba(139, 92, 246, 0.3);
-          }
-          50% { 
-            transform: scale(1.02);
-            box-shadow: 
-              0 0 60px rgba(250, 204, 21, 0.7),
-              0 0 100px rgba(139, 92, 246, 0.5);
-          }
-        }
-        
-        [data-theme="light"] .container.winner {
-          animation: winner-pulse-light 2s ease-in-out infinite;
-        }
-        
-        [data-theme="dark"] .container.winner {
-          animation: winner-pulse-dark 2s ease-in-out infinite;
-        }
-        
-        
+
         .title {
-          width: 100%;
-          margin: 0 0 var(--space-3, 0.75rem) 0;
-          font-family: var(--font-accent, 'Pirata One', cursive);
-          font-size: var(--text-xl, 1.563rem);
-          font-weight: var(--font-semibold, 600);
-          color: var(--color-text-primary, #292524);
+          font-family: var(--font-sans, 'Space Grotesk', sans-serif);
+          font-size: 1.25rem;
+          font-weight: 600;
+          color: var(--color-text-primary);
+          margin-bottom: 1rem;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
-        
-        .winning-mode-badge {
-          font-size: var(--text-sm, 0.8rem);
-          padding: 4px 10px;
-          background: linear-gradient(135deg, var(--color-accent, #8b5cf6) 0%, var(--color-accent-dark, #7c3aed) 100%);
-          color: var(--color-text-inverse, #ffffff);
-          border-radius: var(--radius-md, 0.375rem);
-          font-family: var(--font-mono, 'Cinzel', serif);
-          text-transform: uppercase;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+
+        .info {
+          font-size: 0.875rem;
+          color: var(--color-text-secondary);
+          font-weight: normal;
         }
-        
-        [data-theme="light"] .container.winner .winning-mode-badge {
-          background: linear-gradient(135deg, #a7f3d0 0%, #6ee7b7 100%);
-          color: #047857;
-          box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
-        }
-        
-        [data-theme="dark"] .container.winner .winning-mode-badge {
-          background: linear-gradient(135deg, 
-            var(--color-primary, #facc15) 0%, 
-            var(--color-primary-dark, #eab308) 100%);
-          color: var(--color-primary-contrast, #0c0a09);
-          box-shadow: 
-            0 0 20px rgba(250, 204, 21, 0.6),
-            0 2px 8px rgba(0, 0, 0, 0.4);
-          font-weight: bold;
-        }
-        
-        .cards-area {
+
+        .cards-wrapper {
           display: flex;
+          gap: 1rem;
           flex-wrap: wrap;
-          gap: 36px;
-          min-height: 110px;
-          padding: var(--space-4, 1rem);
-          background: linear-gradient(135deg, 
-            var(--color-surface-variant, #f5f5f4) 0%, 
-            var(--color-surface, #fafaf9) 100%);
-          border-radius: var(--radius-lg, 0.5rem);
-          margin-bottom: var(--space-3, 0.75rem);
-          border: 1px solid var(--color-border, #e7e5e4);
-          box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.15);
-          transition: all 0.3s ease;
+          justify-content: center;
+          align-items: center;
+          min-height: 120px;
         }
-        
-        [data-theme="light"] .container.winner .cards-area {
-          background: linear-gradient(135deg, 
-            rgba(236, 253, 245, 0.9) 0%, 
-            rgba(209, 250, 229, 0.9) 100%);
-          border: 2px solid #10b981;
-          pointer-events: none;
-        }
-        
-        [data-theme="dark"] .container.winner .cards-area {
-          background: linear-gradient(135deg, 
-            rgba(250, 204, 21, 0.08) 0%,
-            rgba(139, 92, 246, 0.08) 100%);
-          border: 2px solid #10b981;
-          box-shadow: 
-            0 0 15px rgba(16, 185, 129, 0.3),
-            inset 0 2px 10px rgba(250, 204, 21, 0.2),
-            inset 0 -2px 10px rgba(139, 92, 246, 0.2);
-          pointer-events: none;
-        }
-        
-        /* Disable drag functionality when winner */
-        .container.winner .card-slot {
-          cursor: not-allowed;
-          pointer-events: none;
-        }
-        
-        .container.winner number-card {
-          opacity: 0.9;
-          cursor: default !important;
-        }
-        
+
         .card-slot {
-          width: 104px;
-          height: 94px;
-          border: 3px dashed var(--color-border-strong, #d6d3d1);
-          border-radius: 12px;
-          display: flex;
+          position: relative;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(145deg, 
-            var(--color-border, #d6d3d1) 0%, 
-            var(--color-surface-variant, #e7e5e4) 100%);
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          position: relative;
-          box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.2);
         }
-        
-        .card-slot.occupied {
-          border: none;
-          background: transparent;
-          box-shadow: none;
+
+        .card-slot.empty {
+          border: 3px dashed var(--color-border, #d6d3d1);
+          border-radius: var(--radius-lg, 0.5rem);
+          background: var(--color-background, #ffffff);
+          opacity: 0.5;
         }
-        
+
+        .card-slot.empty.small {
+          width: 60px;
+          height: 80px;
+        }
+
+        .card-slot.empty.medium {
+          width: 80px;
+          height: 100px;
+        }
+
+        .card-slot.empty.large {
+          width: 100px;
+          height: 120px;
+        }
+
         .card-slot.drag-over {
-          background: linear-gradient(145deg, 
-            var(--emerald-200, #a7f3d0) 0%, 
-            var(--emerald-100, #d1fae5) 100%);
-          border-color: var(--emerald-500, #10b981);
-          border-width: 3px;
-          border-style: solid;
-          transform: scale(1.08);
-          box-shadow: 
-            0 0 20px rgba(16, 185, 129, 0.3),
-            inset 0 2px 4px rgba(0, 0, 0, 0.1);
+          background: var(--color-success-bg, #ecfdf5);
+          border-color: var(--color-success, #10b981);
+          opacity: 1;
         }
-        
-        .card-slot.drag-over.occupied {
-          background: linear-gradient(145deg, 
-            var(--yellow-300, #fde047) 0%, 
-            var(--yellow-200, #fef08a) 100%);
-          border-color: var(--yellow-500, #eab308);
-          box-shadow: 
-            0 0 20px rgba(234, 179, 8, 0.4),
-            0 4px 12px rgba(0, 0, 0, 0.15);
-        }
-        
-        @keyframes pulse-empty {
-          0%, 100% { 
-            opacity: 0.4;
-            transform: scale(1);
-          }
-          50% { 
-            opacity: 0.7;
-            transform: scale(1.1);
-          }
-        }
-        
-        .slot-placeholder {
-          font-family: var(--font-gothic, 'Grenze Gotisch', cursive);
-          font-size: 32px;
-          color: var(--color-text-muted, #a8a29e);
-          pointer-events: none;
-          opacity: 0.4;
-          animation: pulse-empty 2s ease-in-out infinite;
+
+        .controls {
+          margin-top: 1.5rem;
           display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 4px;
+          gap: 0.5rem;
+          justify-content: center;
         }
-        
-        .slot-placeholder-text {
-          font-size: 10px;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          margin-top: 4px;
-        }
-        
-        .stats {
-          width: 100%;
-          margin-top: var(--space-3, 0.75rem);
-          padding-top: var(--space-3, 0.75rem);
-          border-top: 1px solid var(--color-border, #e7e5e4);
-          font-family: var(--font-mono, 'Cinzel', serif);
-          font-size: var(--text-sm, 0.8rem);
-          color: var(--color-text-secondary, #57534e);
-        }
-        
-        [data-theme="light"] .container.winner .stats {
-          border-top-color: #10b981;
-          color: #047857;
-          font-weight: bold;
-        }
-        
-        [data-theme="dark"] .container.winner .stats {
-          border-top-color: #10b981;
-          color: var(--color-primary, #facc15);
-          font-weight: bold;
-          text-shadow: 0 0 10px rgba(250, 204, 21, 0.5);
-        }
-        
-        /* Light mode status message */
-        [data-theme="light"] .status-message {
-          padding: var(--space-2, 0.5rem);
-          margin-top: var(--space-2, 0.5rem);
-          background-color: #ecfdf5;
-          border: 2px solid #10b981;
+
+        button {
+          padding: 0.5rem 1rem;
+          background: var(--color-primary, #facc15);
+          color: var(--color-primary-contrast, #000);
+          border: none;
           border-radius: var(--radius-md, 0.375rem);
-          color: #047857;
-          font-family: var(--font-sans, 'MedievalSharp', cursive);
-          font-size: var(--text-sm, 0.8rem);
-          text-align: center;
-          display: none;
+          font-family: var(--font-sans);
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
         }
-        
-        /* Dark mode status message */
-        [data-theme="dark"] .status-message {
-          padding: var(--space-2, 0.5rem);
-          margin-top: var(--space-2, 0.5rem);
-          background: linear-gradient(135deg,
-            rgba(250, 204, 21, 0.2) 0%,
-            rgba(139, 92, 246, 0.2) 100%);
-          border: 2px solid #10b981;
-          border-radius: var(--radius-md, 0.375rem);
-          color: var(--color-primary, #facc15);
-          font-family: var(--font-accent, 'Pirata One', cursive);
-          font-size: var(--text-base, 1rem);
-          font-weight: bold;
-          text-align: center;
-          text-shadow: 0 0 20px rgba(250, 204, 21, 0.6);
-          box-shadow: 
-            0 0 20px rgba(250, 204, 21, 0.3),
-            0 0 15px rgba(16, 185, 129, 0.3),
-            inset 0 0 10px rgba(250, 204, 21, 0.1);
-          display: none;
+
+        button:hover {
+          transform: translateY(-2px);
+          box-shadow: var(--shadow-md);
         }
-        
-        [data-theme="light"] .status-message.show {
-          display: block;
-          animation: slide-in 0.3s ease-out;
+
+        button:active {
+          transform: translateY(0);
         }
-        
-        [data-theme="dark"] .status-message.show {
-          display: block;
-          animation: slide-in-glow 0.5s ease-out;
+
+        button.secondary {
+          background: var(--color-surface, #f5f5f4);
+          color: var(--color-text-primary);
         }
-        
-        @keyframes slide-in-glow {
-          from {
-            transform: translateY(-10px) scale(0.9);
-            opacity: 0;
+
+        @media (max-width: 768px) {
+          .cards-wrapper {
+            gap: 0.5rem;
           }
-          to {
-            transform: translateY(0) scale(1);
-            opacity: 1;
-          }
-        }
-        
-        @keyframes slide-in {
-          from {
-            transform: translateY(-10px);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
+
+          .container {
+            padding: 1rem;
           }
         }
       </style>
+
       <div class="container" id="container">
-        <h3 class="title">
-          <span>Random Number Cards</span>
-          <span class="winning-mode-badge">${winningMode === 'desc' ? '↓ DESC' : '↑ ASC'}</span>
-        </h3>
-        <div class="cards-area" id="cardsArea">
+        <div class="title">
+          Number Cards
+          <span class="info">${totalCards} cards</span>
+        </div>
+        <div class="cards-wrapper" id="cards-wrapper">
           ${this._numbers.map((num, index) => `
-            <div class="card-slot occupied" data-slot-index="${index}">
-              <number-card id="card-${index}-${num}">${num}</number-card>
+            <div class="card-slot" data-index="${index}">
+              <number-card 
+                value="${num}" 
+                size="${cardSize}"
+                draggable="true"
+                id="card-${index}"
+              ></number-card>
             </div>
           `).join('')}
         </div>
-        <div class="stats">
-          Total: ${this._numbers.length} cards (max 8) | 
-          Range: ${this.getAttribute('min-range') || 0}-${this.getAttribute('max-range') || 100} | 
-          Min: ${Math.min(...this._numbers)} | 
-          Max: ${Math.max(...this._numbers)} |
-          Mode: ${winningMode.toUpperCase()}
+        <div class="controls">
+          <button type="button" id="shuffle-btn">Shuffle</button>
+          <button type="button" id="new-numbers-btn" class="secondary">New Numbers</button>
+          <button type="button" id="sort-asc-btn" class="secondary">Sort �</button>
+          <button type="button" id="sort-desc-btn" class="secondary">Sort �</button>
         </div>
-        <div class="status-message" id="statusMessage"></div>
       </div>
     `;
+
+    this.setupControlButtons();
+  }
+
+  setupControlButtons() {
+    const shuffleBtn = this.shadowRoot.getElementById('shuffle-btn');
+    const newNumbersBtn = this.shadowRoot.getElementById('new-numbers-btn');
+    const sortAscBtn = this.shadowRoot.getElementById('sort-asc-btn');
+    const sortDescBtn = this.shadowRoot.getElementById('sort-desc-btn');
+
+    shuffleBtn?.addEventListener('click', () => this.shuffleCards());
+    newNumbersBtn?.addEventListener('click', () => this.generateNewNumbers());
+    sortAscBtn?.addEventListener('click', () => this.sortCards('asc'));
+    sortDescBtn?.addEventListener('click', () => this.sortCards('desc'));
   }
 
   setupDragAndDrop() {
-    const cardsArea = this.shadowRoot.getElementById('cardsArea');
-    if (!cardsArea) return;
+    const container = this.shadowRoot.getElementById('container');
+    const slots = this.shadowRoot.querySelectorAll('.card-slot');
 
-    // Get all slots
-    const slots = cardsArea.querySelectorAll('.card-slot');
-    
     slots.forEach(slot => {
       slot.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        slot.classList.add('drag-over');
+        
+        if (!slot.querySelector('number-card')) {
+          slot.classList.add('drag-over');
+        }
       });
 
-      slot.addEventListener('dragleave', (e) => {
+      slot.addEventListener('dragleave', () => {
         slot.classList.remove('drag-over');
       });
 
-      slot.addEventListener('drop', (e) => {
+      slot.addEventListener('drop', async (e) => {
         e.preventDefault();
         slot.classList.remove('drag-over');
+
+        const draggedValue = e.dataTransfer.getData('text/plain');
+        const draggedId = e.dataTransfer.getData('card-id');
         
-        const draggedCard = window.draggedCard;
+        // Find the dragged card
+        const draggedCard = this.shadowRoot.getElementById(draggedId);
         if (!draggedCard) return;
 
         // Get the current card in this slot (if any)
         const currentCard = slot.querySelector('number-card');
         
-        // Get the source slot (where the dragged card came from)
+        // Find the source slot
         const sourceSlot = draggedCard.parentElement;
         
-        // If dropping on an occupied slot, swap the cards
-        if (currentCard && currentCard !== draggedCard) {
-          // Swap the cards
+        if (sourceSlot === slot) return; // Same slot, no action needed
+
+        // Swap cards
+        if (currentCard) {
+          // Move current card to source slot
           sourceSlot.appendChild(currentCard);
-          slot.appendChild(draggedCard);
-          
-          // Update slot states
-          sourceSlot.classList.add('occupied');
-          slot.classList.add('occupied');
-        } else if (!currentCard) {
-          // If dropping on an empty slot, just move the card
-          slot.appendChild(draggedCard);
-          slot.classList.add('occupied');
-          
-          // Clear the source slot if it's now empty
-          if (sourceSlot && sourceSlot.classList.contains('card-slot')) {
-            sourceSlot.classList.remove('occupied');
-            // Add placeholder back to empty slot
-            if (!sourceSlot.querySelector('number-card')) {
-              const placeholder = document.createElement('div');
-              placeholder.className = 'slot-placeholder';
-              placeholder.innerHTML = `
-                <span>⊕</span>
-                <span class="slot-placeholder-text">Drop</span>
-              `;
-              sourceSlot.appendChild(placeholder);
-            }
-          }
+        } else {
+          // Source slot becomes empty
+          sourceSlot.classList.add('empty');
         }
-        
-        // Remove placeholder if it exists
-        const placeholder = slot.querySelector('.slot-placeholder');
-        if (placeholder) {
-          placeholder.remove();
-        }
-        
-        // Check if cards are in order immediately for iPad audio
-        console.log('Drop event: Calling checkOrder');
-        this.isUserInteraction = true; // Mark as user interaction
-        
-        // Check immediately to maintain user gesture chain for audio
-        this.checkOrder();
-        
-        // Reset flag and save state after a short delay
-        setTimeout(() => {
-          this.isUserInteraction = false; // Reset flag
-          debouncedSave(); // Save state
-        }, 100);
+
+        // Move dragged card to this slot
+        slot.appendChild(draggedCard);
+        slot.classList.remove('empty');
+
+        // Update internal state
+        await this.updateNumbersFromDOM();
       });
     });
 
-    // Listen for card drag events
-    this.addEventListener('card-drag-start', (e) => {
-      const card = e.detail.card;
-      const slot = card.parentElement;
-      
-      // Prepare audio during drag start (important for iPad)
-      audioManager.prepareAudioForPlayback();
-      
-      // Add placeholder when card is dragged out
-      setTimeout(() => {
-        if (slot && slot.classList.contains('card-slot') && !slot.querySelector('number-card')) {
-          const placeholder = document.createElement('div');
-          placeholder.className = 'slot-placeholder';
-          placeholder.innerHTML = `
-            <span>⊕</span>
-            <span class="slot-placeholder-text">Drop</span>
-          `;
-          slot.appendChild(placeholder);
-          slot.classList.remove('occupied');
-        }
-      }, 10);
+    // Handle drag start/end for visual feedback
+    container.addEventListener('dragstart', () => {
+      container.classList.add('drag-active');
+    });
+
+    container.addEventListener('dragend', () => {
+      container.classList.remove('drag-active');
     });
   }
 
-  checkOrder() {
-    const cardsArea = this.shadowRoot.getElementById('cardsArea');
-    if (!cardsArea) {
-      console.error('Cards area not found!');
-      return;
+  async updateNumbersFromDOM() {
+    const slots = this.shadowRoot.querySelectorAll('.card-slot');
+    const newNumbers = [];
+
+    slots.forEach(slot => {
+      const card = slot.querySelector('number-card');
+      if (card) {
+        newNumbers.push(Number(card.getAttribute('value')));
+      }
+    });
+
+    this._numbers = newNumbers;
+    await this.saveState();
+
+    // Dispatch custom event for parent components
+    this.dispatchEvent(new CustomEvent('numbers-changed', {
+      detail: { numbers: this._numbers },
+      bubbles: true
+    }));
+  }
+
+  async shuffleCards() {
+    // Fisher-Yates shuffle
+    const shuffled = [...this._numbers];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     
-    const cards = cardsArea.querySelectorAll('number-card');
-    console.log('Found cards:', cards.length);
+    this._numbers = shuffled;
+    await this.saveState();
+    this.render();
+    this.setupDragAndDrop();
+  }
+
+  async generateNewNumbers() {
+    const totalCards = Number(this.getAttribute('total-cards')) || 5;
+    const minRange = Number(this.getAttribute('min-range')) || 0;
+    const maxRange = Number(this.getAttribute('max-range')) || 100;
     
-    const values = Array.from(cards).map(card => {
-      const val = card.getValue();
-      console.log('Card value:', val, 'parsed:', parseInt(val));
-      return parseInt(val);
+    const validatedTotal = Math.min(Math.max(totalCards, 2), 8);
+    this._numbers = generateRandomNumbers(validatedTotal, minRange, maxRange);
+    
+    await this.saveState();
+    this.render();
+    this.setupDragAndDrop();
+  }
+
+  async sortCards(direction = 'asc') {
+    const sorted = [...this._numbers].sort((a, b) => {
+      return direction === 'asc' ? a - b : b - a;
     });
     
-    const winningMode = this.getAttribute('winning-mode') || 'asc';
-    
-    // Debug logging
-    console.log('=== CHECKING ORDER ===');
-    console.log('Current values:', values);
-    console.log('Mode:', winningMode);
-    console.log('Original numbers count:', this._numbers.length);
-    console.log('Current cards count:', values.length);
-    
-    // Check if we have all cards
-    if (values.length !== this._numbers.length) {
-      console.log('Not all cards present! Expected:', this._numbers.length, 'Got:', values.length);
-      return;
+    this._numbers = sorted;
+    await this.saveState();
+    this.render();
+    this.setupDragAndDrop();
+  }
+
+  async clearState() {
+    try {
+      await set(this._containerKey, null);
+      console.log(`Cleared state for ${this._containerKey}`);
+    } catch (error) {
+      console.error('Error clearing state:', error);
     }
-    
-    // Check if values are in order based on mode
-    let isOrdered = true;
-    for (let i = 1; i < values.length; i++) {
-      if (winningMode === 'asc') {
-        // Ascending order: each number should be >= previous
-        if (values[i] < values[i - 1]) {
-          console.log(`Not ascending: ${values[i]} < ${values[i-1]} at position ${i}`);
-          isOrdered = false;
-          break;
-        }
-      } else if (winningMode === 'desc') {
-        // Descending order: each number should be <= previous
-        if (values[i] > values[i - 1]) {
-          console.log(`Not descending: ${values[i]} > ${values[i-1]} at position ${i}`);
-          isOrdered = false;
-          break;
-        }
-      }
-    }
-    
-    console.log('Is ordered:', isOrdered);
-    
-    // Show status message and apply winner styling
-    const statusMessage = this.shadowRoot.getElementById('statusMessage');
-    const container = this.shadowRoot.getElementById('container');
-    
-    if (!statusMessage || !container) {
-      console.error('Could not find statusMessage or container elements!');
-      return;
-    }
-    
-    console.log('Final check - isOrdered:', isOrdered, 'hasAllCards:', values.length === this._numbers.length);
-    
-    if (isOrdered && values.length === this._numbers.length) {
-      console.log('🎉 WINNER! Applying winner state');
-      console.log('Container element:', container);
-      console.log('Container classes before:', container.className);
-      const modeText = winningMode === 'desc' ? 'descending' : 'ascending';
-      statusMessage.textContent = `✅ Perfect! Cards are in ${modeText} order!`;
-      statusMessage.className = 'status-message show';
-      
-      // Add winner class to container (this disables interactions via CSS)
-      container.classList.add('winner');
-      console.log('Container classes after:', container.className);
-      console.log('Container computed background:', window.getComputedStyle(container).backgroundColor);
-      
-      // Disable drag functionality on all cards
-      cards.forEach(card => {
-        if (card.shadowRoot) {
-          const cardElement = card.shadowRoot.querySelector('.number-card');
-          if (cardElement) {
-            cardElement.draggable = false;
-            cardElement.style.cursor = 'default';
-            cardElement.classList.add('disabled');
-          }
-        }
-      });
-      
-      // Remove event listeners from slots
-      const slots = cardsArea.querySelectorAll('.card-slot');
-      slots.forEach(slot => {
-        slot.style.pointerEvents = 'none';
-      });
-      
-      // Play winner sound ONLY if this was triggered by user interaction
-      if (this.isUserInteraction) {
-        console.log('User interaction detected, playing winner sound...');
-        // Use the audio manager which handles iPad/iOS properly
-        audioManager.playWinnerSound();
-      } else {
-        console.log('Skipping audio - not a user interaction');
-      }
-      
-      // Dispatch success event
-      this.dispatchEvent(new CustomEvent('cards-ordered', {
-        detail: { values, mode: winningMode, isWinner: true },
-        bubbles: true,
-        composed: true
-      }));
-      
-      // Animate container down after a short delay
-      setTimeout(() => {
-        this.animateContainerDown();
-      }, 1500);
-    } else {
-      statusMessage.className = 'status-message';
-      container.classList.remove('winner');
-      
-      // Re-enable drag functionality if it was disabled
-      cards.forEach(card => {
-        if (card.shadowRoot) {
-          const cardElement = card.shadowRoot.querySelector('.number-card');
-          if (cardElement) {
-            cardElement.draggable = true;
-            cardElement.style.cursor = '';
-            cardElement.classList.remove('disabled');
-          }
-        }
-      });
-      
-      // Re-enable slots
-      const slots = cardsArea.querySelectorAll('.card-slot');
-      slots.forEach(slot => {
-        slot.style.pointerEvents = '';
-      });
-    }
+  }
+
+  getNumbers() {
+    return [...this._numbers];
   }
 
   setNumbers(numbers) {
-    // Limit to maximum 8 numbers
-    this._numbers = numbers.slice(0, 8);
-    this.render();
-    this.setupDragAndDrop();
-  }
-
-  getCurrentOrder() {
-    const cardsArea = this.shadowRoot.getElementById('cardsArea');
-    const cards = cardsArea.querySelectorAll('number-card');
-    return Array.from(cards).map(card => parseInt(card.getValue()));
-  }
-
-  getState() {
-    return {
-      originalNumbers: this._numbers,
-      currentOrder: this.getCurrentOrder(),
-      attributes: {
-        totalCards: this.getAttribute('total-cards'),
-        minRange: this.getAttribute('min-range'),
-        maxRange: this.getAttribute('max-range'),
-        winningMode: this.getAttribute('winning-mode')
-      },
-      isWinner: this.shadowRoot.getElementById('container').classList.contains('winner')
-    };
-  }
-
-  setState(state) {
-    if (!state) return;
-    
-    console.log('[setState] Restoring container state:', state);
-    
-    // Set attributes
-    if (state.attributes) {
-      if (state.attributes.totalCards) this.setAttribute('total-cards', state.attributes.totalCards);
-      if (state.attributes.minRange) this.setAttribute('min-range', state.attributes.minRange);
-      if (state.attributes.maxRange) this.setAttribute('max-range', state.attributes.maxRange);
-      if (state.attributes.winningMode) this.setAttribute('winning-mode', state.attributes.winningMode);
+    if (Array.isArray(numbers)) {
+      this._numbers = numbers;
+      this.saveState();
+      this.render();
+      this.setupDragAndDrop();
     }
-    
-    // Set the original numbers
-    if (state.originalNumbers) {
-      this._numbers = state.originalNumbers;
-    }
-    
-    // Render with the original numbers first
-    this.render();
-    this.setupDragAndDrop();
-    
-    // Wait for render to complete, especially on iPad
-    const restoreDelay = getIPadDelay(100);
-    
-    setTimeout(() => {
-      // Verify shadow DOM is ready
-      if (!this.shadowRoot || !this.shadowRoot.getElementById('cardsArea')) {
-        console.error('[setState] Shadow DOM not ready after delay');
-        return;
-      }
-      
-      // Then rearrange cards to match the saved order
-      if (state.currentOrder && state.currentOrder.length > 0) {
-        this.restoreCardOrder(state.currentOrder);
-      }
-      
-      // Check if it was a winner state
-      if (state.isWinner) {
-        // Don't play audio when restoring state
-        this.isUserInteraction = false;
-        this.checkOrder();
-      }
-    }, restoreDelay);
-  }
-
-  restoreCardOrder(savedOrder) {
-    const cardsArea = this.shadowRoot.getElementById('cardsArea');
-    if (!cardsArea) {
-      console.error('[restoreCardOrder] Cards area not found');
-      return;
-    }
-    
-    const slots = cardsArea.querySelectorAll('.card-slot');
-    if (!slots || slots.length === 0) {
-      console.error('[restoreCardOrder] No slots found');
-      return;
-    }
-    
-    console.log('[restoreCardOrder] Restoring order:', savedOrder);
-    
-    // Wait a frame for cards to be ready
-    requestAnimationFrame(() => {
-      const allCards = cardsArea.querySelectorAll('number-card');
-      
-      if (!allCards || allCards.length === 0) {
-        console.warn('[restoreCardOrder] No cards found - skipping restore');
-        return;
-      }
-      
-      // Create a map of value to card element
-      const cardMap = new Map();
-      allCards.forEach(card => {
-        const value = parseInt(card.getValue());
-        if (!isNaN(value)) {
-          cardMap.set(value, card);
-        }
-      });
-      
-      console.log(`[restoreCardOrder] Found ${cardMap.size} cards`);
-      
-      // Collect cards to move
-      const moves = [];
-      savedOrder.forEach((value, targetIndex) => {
-        if (targetIndex < slots.length && cardMap.has(value)) {
-          moves.push({ card: cardMap.get(value), targetSlot: slots[targetIndex] });
-        }
-      });
-      
-      // Clear all slots first (remove placeholders)
-      slots.forEach(slot => {
-        const placeholder = slot.querySelector('.slot-placeholder');
-        if (placeholder) placeholder.remove();
-        slot.classList.remove('occupied');
-      });
-      
-      // Use document fragment to batch DOM operations
-      const fragment = document.createDocumentFragment();
-      
-      // Temporarily move all cards to fragment
-      allCards.forEach(card => {
-        fragment.appendChild(card);
-      });
-      
-      // Place cards in correct slots
-      moves.forEach(({ card, targetSlot }) => {
-        targetSlot.appendChild(card);
-        targetSlot.classList.add('occupied');
-      });
-      
-      console.log('[restoreCardOrder] Order restored successfully');
-    });
-  }
-  
-  animateContainerDown() {
-    // Get the container wrapper and this container's position
-    const containerWrapper = document.getElementById('container-wrapper');
-    if (!containerWrapper) return;
-    
-    // Create a new container with the same settings
-    const newContainer = document.createElement('number-card-container');
-    newContainer.setAttribute('total-cards', this.getAttribute('total-cards'));
-    newContainer.setAttribute('min-range', this.getAttribute('min-range'));
-    newContainer.setAttribute('max-range', this.getAttribute('max-range'));
-    newContainer.setAttribute('winning-mode', this.getAttribute('winning-mode'));
-    
-    // Insert new container at the top
-    containerWrapper.insertBefore(newContainer, containerWrapper.firstChild);
-    
-    // Generate numbers for the new container
-    const totalCards = Math.min(parseInt(this.getAttribute('total-cards')) || 5, 8);
-    const minRange = parseInt(this.getAttribute('min-range')) || 0;
-    const maxRange = parseInt(this.getAttribute('max-range')) || 100;
-    const numbers = generateRandomNumbers(totalCards, minRange, maxRange);
-    
-    // Wait for the new container to be ready then set numbers
-    setTimeout(() => {
-      newContainer.setNumbers(numbers);
-    }, 100);
-    
-    // Animate this completed container down
-    animate(this, {
-      translateY: [0, 250],
-      opacity: [1, 0.6],
-      scale: [1, 0.95],
-      duration: 800,
-      easing: 'easeOutCubic',
-      complete: () => {
-        // Keep the container visible but moved down
-        this.style.transform = 'translateY(250px) scale(0.95)';
-        this.style.opacity = '0.6';
-        this.style.pointerEvents = 'none';
-      }
-    });
-    
-    // Animate the new container in
-    animate(newContainer, {
-      translateY: [-100, 0],
-      opacity: [0, 1],
-      duration: 600,
-      easing: 'easeOutCubic'
-    });
-    
-    // Save the state after creating new container
-    setTimeout(() => {
-      debouncedSave();
-    }, 1000);
   }
 }
 

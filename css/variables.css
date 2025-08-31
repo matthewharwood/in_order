@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Pirata+One&family=MedievalSharp&family=Cinzel:wght@400;500;600;700;800;900&family=Grenze+Gotisch:wght@100;200;300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 
 :root {
   /* Error Colors (Rose) */
@@ -94,11 +94,8 @@
   --color-border-strong: var(--stone-300);
   
   /* Typography - Font Families */
-  --font-mono: 'Cinzel', serif;
-  --font-sans: 'MedievalSharp', cursive;
-  --font-display: 'UnifrakturMaguntia', cursive;
-  --font-accent: 'Pirata One', cursive;
-  --font-gothic: 'Grenze Gotisch', cursive;
+  --font-mono: 'Space Mono', monospace;
+  --font-sans: 'Space Grotesk', sans-serif;
   
   /* Typography - Modular Scale (1.25 - Major Third) */
   --text-xs: 0.64rem;     /* 10.24px */

@@ -3,7 +3,7 @@
 ## Software Rules
 1. Never use ParseInt, always use Number. The Radix is too easy to forget and cause errors in code.
 2. Always put Web Components inside `js/components/**/*.js` directory and use PascalCase for the file names.
-3. YOU MUST use idb-keyval for all LocalStorage
+3. YOU MUST use idb for all LocalStorage
 
 
 
