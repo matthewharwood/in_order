@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&family=Space+Grotesk:wght@300;400;500;600;700&family=UnifrakturMaguntia&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Pirata+One&family=MedievalSharp&family=Cinzel:wght@400;500;600;700;800;900&family=Grenze+Gotisch:wght@100;200;300;400;500;600;700;800;900&display=swap');
 
 :root {
   /* Error Colors (Rose) */
@@ -94,9 +94,11 @@
   --color-border-strong: var(--stone-300);
   
   /* Typography - Font Families */
-  --font-mono: 'Space Mono', monospace;
-  --font-sans: 'Space Grotesk', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Cinzel', serif;
+  --font-sans: 'MedievalSharp', cursive;
   --font-display: 'UnifrakturMaguntia', cursive;
+  --font-accent: 'Pirata One', cursive;
+  --font-gothic: 'Grenze Gotisch', cursive;
   
   /* Typography - Modular Scale (1.25 - Major Third) */
   --text-xs: 0.64rem;     /* 10.24px */
@@ -221,4 +223,60 @@
   --container-6xl: 72rem;   /* 1152px */
   --container-7xl: 80rem;   /* 1280px */
   --container-full: 100%;
+}
+
+/* Dark Theme (Default) */
+[data-theme="dark"] {
+  --color-background: #0c0a09;
+  --color-surface: #1c1917;
+  --color-surface-variant: #292524;
+  
+  --color-text-primary: #fafaf9;
+  --color-text-secondary: #d6d3d1;
+  --color-text-muted: #a8a29e;
+  --color-text-inverse: #0c0a09;
+  
+  --color-border: #44403c;
+  --color-border-strong: #57534e;
+  
+  --color-primary: #facc15;
+  --color-primary-light: #fde047;
+  --color-primary-dark: #eab308;
+  --color-primary-contrast: #0c0a09;
+  
+  --color-secondary: #ef4444;
+  --color-secondary-light: #f87171;
+  --color-secondary-dark: #dc2626;
+  
+  --color-accent: #8b5cf6;
+  --color-accent-light: #a78bfa;
+  --color-accent-dark: #7c3aed;
+}
+
+/* Light Theme */
+[data-theme="light"] {
+  --color-background: #fafaf9;
+  --color-surface: #f5f5f4;
+  --color-surface-variant: #e7e5e4;
+  
+  --color-text-primary: #1c1917;
+  --color-text-secondary: #44403c;
+  --color-text-muted: #78716c;
+  --color-text-inverse: #fafaf9;
+  
+  --color-border: #d6d3d1;
+  --color-border-strong: #a8a29e;
+  
+  --color-primary: #a16207;
+  --color-primary-light: #ca8a04;
+  --color-primary-dark: #854d0e;
+  --color-primary-contrast: #ffffff;
+  
+  --color-secondary: #991b1b;
+  --color-secondary-light: #dc2626;
+  --color-secondary-dark: #7f1d1d;
+  
+  --color-accent: #6d28d9;
+  --color-accent-light: #8b5cf6;
+  --color-accent-dark: #5b21b6;
 }

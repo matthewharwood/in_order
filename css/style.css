@@ -19,6 +19,26 @@ html {
   font-size: 1em;
   line-height: var(--leading-normal);
   font-family: var(--font-sans);
+  background-color: var(--color-background);
+  transition: background-color 0.3s ease, color 0.3s ease;
+  /* Prevent text selection and touch callouts on mobile */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* Prevent unwanted touch behaviors */
+body {
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  overflow-x: hidden;
+  background-color: var(--color-background);
+  background-image: 
+    radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(239, 68, 68, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 40% 20%, rgba(250, 204, 21, 0.1) 0%, transparent 50%);
+  min-height: 100vh;
+  position: relative;
 }
 
 /*
@@ -249,3 +269,124 @@ textarea {
   }
 }
 
+/* Game Title Styles */
+.game-title {
+  font-family: var(--font-display);
+  font-size: var(--text-6xl);
+  color: var(--color-primary);
+  text-align: center;
+  margin: var(--space-8) auto var(--space-12) auto;
+  text-shadow: 
+    2px 2px 0 rgba(0, 0, 0, 0.5),
+    4px 4px 0 rgba(0, 0, 0, 0.3),
+    6px 6px 12px rgba(0, 0, 0, 0.5),
+    0 0 30px var(--color-primary),
+    0 0 60px var(--color-secondary);
+  letter-spacing: var(--tracking-widest);
+  line-height: var(--leading-tight);
+  background: linear-gradient(
+    135deg, 
+    var(--color-primary) 0%, 
+    var(--color-secondary) 50%, 
+    var(--color-accent) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  position: relative;
+  padding: var(--space-4);
+  animation: flicker 3s infinite alternate;
+}
+
+.game-title::before {
+  content: "⚔️";
+  position: absolute;
+  left: 10%;
+  top: 50%;
+  transform: translateY(-50%) rotate(-15deg);
+  font-size: var(--text-4xl);
+  -webkit-text-fill-color: initial;
+  animation: sword-swing 4s ease-in-out infinite;
+}
+
+.game-title::after {
+  content: "🛡️";
+  position: absolute;
+  right: 10%;
+  top: 50%;
+  transform: translateY(-50%) rotate(15deg);
+  font-size: var(--text-4xl);
+  -webkit-text-fill-color: initial;
+  animation: shield-pulse 3s ease-in-out infinite;
+}
+
+@media (max-width: 768px) {
+  .game-title {
+    font-size: var(--text-5xl);
+  }
+  
+  .game-title::before,
+  .game-title::after {
+    font-size: var(--text-3xl);
+  }
+}
+
+@keyframes flicker {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@keyframes sword-swing {
+  0%, 100% {
+    transform: translateY(-50%) rotate(-15deg);
+  }
+  50% {
+    transform: translateY(-50%) rotate(-25deg);
+  }
+}
+
+@keyframes shield-pulse {
+  0%, 100% {
+    transform: translateY(-50%) rotate(15deg) scale(1);
+  }
+  50% {
+    transform: translateY(-50%) rotate(15deg) scale(1.1);
+  }
+}
+
+/* Medieval border decoration */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  border: 20px solid transparent;
+  border-image: linear-gradient(
+    45deg,
+    var(--color-primary) 0%,
+    var(--color-secondary) 25%,
+    var(--color-accent) 50%,
+    var(--color-secondary) 75%,
+    var(--color-primary) 100%
+  ) 1;
+  opacity: 0.3;
+  z-index: 1;
+}
+
+@media (max-width: 480px) {
+  .game-title {
+    font-size: var(--text-4xl);
+  }
+  
+  .game-title::before,
+  .game-title::after {
+    display: none;
+  }
+}

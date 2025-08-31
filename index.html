@@ -3,8 +3,8 @@
 
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1, minimum-scale=1">
+  <title>Order Game</title>
   <link rel="stylesheet" href="css/style.css">
   <meta name="description" content="">
 
@@ -20,6 +20,9 @@
 
   <link rel="manifest" href="site.webmanifest">
   <meta name="theme-color" content="#fafafa">
+  
+  <!-- idb-keyval for persistent storage -->
+  <script src="https://unpkg.com/idb-keyval@6/dist/umd.js"></script>
 </head>
 
 <body>
@@ -27,13 +30,18 @@
   <!-- Game Settings Button -->
   <game-settings></game-settings>
 
+  <!-- Game Title -->
+  <h1 class="game-title">Order Game</h1>
+
   <!-- Add your site or application content here -->
-  <p>Hello world! This is HTML5 Boilerplate.</p>
   
-  <!-- NumberCard Container Examples -->
-  <number-card-container total-cards="5"></number-card-container>
-  <number-card-container total-cards="10"></number-card-container>
-  <number-card-container total-cards="8"></number-card-container>
+  <!-- NumberCard Container Wrapper -->
+  <div id="container-wrapper">
+    <number-card-container total-cards="5" min-range="0" max-range="100" winning-mode="asc"></number-card-container>
+  </div>
+  
+  <!-- Inventory Toolbar -->
+  <game-inventory></game-inventory>
   
   <script type="module" src="js/app.js"></script>
 

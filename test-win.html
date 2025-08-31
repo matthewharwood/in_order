@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test Winning Detection</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body {
+      padding: 20px;
+      font-family: var(--font-mono, 'Cinzel', serif);
+    }
+    .test-controls {
+      background: var(--color-surface, #f5f5f4);
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      background: var(--color-primary, #facc15);
+      color: var(--color-primary-contrast, #000);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover {
+      opacity: 0.8;
+    }
+    .debug-output {
+      background: #000;
+      color: #0f0;
+      padding: 10px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <theme-toggle></theme-toggle>
+  
+  <div class="test-controls">
+    <h2>Test Controls</h2>
+    <button onclick="testWinningState()">Force Win State (Ascending)</button>
+    <button onclick="testDescWinningState()">Force Win State (Descending)</button>
+    <button onclick="resetContainers()">Reset All</button>
+    <button onclick="checkCurrentState()">Check Current State</button>
+    <div id="debug" class="debug-output"></div>
+  </div>
+
+  <h1 class="game-title">Win Detection Test</h1>
+  
+  <div id="container-wrapper">
+    <!-- Test container with specific numbers for easy ordering -->
+    <number-card-container id="test1" total-cards="3" min-range="1" max-range="10" winning-mode="asc"></number-card-container>
+    <number-card-container id="test2" total-cards="3" min-range="1" max-range="10" winning-mode="desc"></number-card-container>
+  </div>
+  
+  <script type="module" src="js/app.js"></script>
+  <script>
+    const debug = document.getElementById('debug');
+    
+    // Override console.log to show in debug panel
+    const originalLog = console.log;
+    console.log = function(...args) {
+      originalLog.apply(console, args);
+      const msg = args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+      ).join(' ');
+      debug.innerHTML += msg + '<br>';
+      debug.scrollTop = debug.scrollHeight;
+    };
+    
+    function testWinningState() {
+      debug.innerHTML = 'Testing ascending win state...<br>';
+      const container = document.getElementById('test1');
+      if (!container) {
+        console.log('Container not found!');
+        return;
+      }
+      
+      // Set specific numbers that are easy to order
+      container.setNumbers([3, 1, 2]);
+      
+      // Wait a bit then programmatically order them
+      setTimeout(() => {
+        const shadowRoot = container.shadowRoot;
+        const slots = shadowRoot.querySelectorAll('.card-slot');
+        const cards = Array.from(shadowRoot.querySelectorAll('number-card'));
+        
+        console.log('Found slots:', slots.length);
+        console.log('Found cards:', cards.length);
+        
+        // Sort cards by value
+        cards.sort((a, b) => parseInt(a.getValue()) - parseInt(b.getValue()));
+        
+        // Clear slots
+        slots.forEach(slot => {
+          const card = slot.querySelector('number-card');
+          if (card) card.remove();
+        });
+        
+        // Place cards in order
+        cards.forEach((card, index) => {
+          if (slots[index]) {
+            slots[index].appendChild(card);
+            console.log(`Placed card ${card.getValue()} in slot ${index}`);
+          }
+        });
+        
+        // Check order
+        console.log('Calling checkOrder...');
+        container.checkOrder();
+      }, 500);
+    }
+    
+    function testDescWinningState() {
+      debug.innerHTML = 'Testing descending win state...<br>';
+      const container = document.getElementById('test2');
+      if (!container) {
+        console.log('Container not found!');
+        return;
+      }
+      
+      // Set specific numbers
+      container.setNumbers([1, 2, 3]);
+      
+      // Wait a bit then order them descending
+      setTimeout(() => {
+        const shadowRoot = container.shadowRoot;
+        const slots = shadowRoot.querySelectorAll('.card-slot');
+        const cards = Array.from(shadowRoot.querySelectorAll('number-card'));
+        
+        // Sort cards descending
+        cards.sort((a, b) => parseInt(b.getValue()) - parseInt(a.getValue()));
+        
+        // Clear and reorder
+        slots.forEach(slot => {
+          const card = slot.querySelector('number-card');
+          if (card) card.remove();
+        });
+        
+        cards.forEach((card, index) => {
+          if (slots[index]) {
+            slots[index].appendChild(card);
+            console.log(`Placed card ${card.getValue()} in slot ${index}`);
+          }
+        });
+        
+        console.log('Calling checkOrder...');
+        container.checkOrder();
+      }, 500);
+    }
+    
+    function resetContainers() {
+      debug.innerHTML = 'Resetting containers...<br>';
+      const containers = document.querySelectorAll('number-card-container');
+      containers.forEach(container => {
+        container.render();
+        container.setupDragAndDrop();
+      });
+    }
+    
+    function checkCurrentState() {
+      debug.innerHTML = 'Checking current state...<br>';
+      const containers = document.querySelectorAll('number-card-container');
+      containers.forEach((container, idx) => {
+        console.log(`Container ${idx}:`, container.getCurrentOrder());
+        console.log(`Winner state:`, container.shadowRoot.getElementById('container').classList.contains('winner'));
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test Winning Conditions</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body {
+      padding: 20px;
+    }
+    .test-info {
+      background: var(--color-surface, #f5f5f4);
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-family: var(--font-mono, 'Cinzel', serif);
+    }
+    .test-info h2 {
+      color: var(--color-primary, #facc15);
+      margin-bottom: 10px;
+    }
+    .test-info p {
+      color: var(--color-text-secondary, #666);
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <theme-toggle></theme-toggle>
+  
+  <div class="test-info">
+    <h2>Test Instructions</h2>
+    <p>1. Drag cards to arrange them in order (ascending for first two, descending for third)</p>
+    <p>2. When correctly ordered, container should turn green and play winner sound</p>
+    <p>3. Cards should become non-draggable when won</p>
+    <p>4. Check console for debug messages</p>
+  </div>
+
+  <h1 class="game-title">Test Winner States</h1>
+  
+  <div id="container-wrapper">
+    <!-- Easy test: only 3 cards ascending -->
+    <number-card-container total-cards="3" min-range="1" max-range="10" winning-mode="asc"></number-card-container>
+    
+    <!-- Medium test: 5 cards ascending -->
+    <number-card-container total-cards="5" min-range="1" max-range="20" winning-mode="asc"></number-card-container>
+    
+    <!-- Hard test: 4 cards descending -->
+    <number-card-container total-cards="4" min-range="1" max-range="15" winning-mode="desc"></number-card-container>
+  </div>
+  
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
