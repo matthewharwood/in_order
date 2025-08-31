@@ -19,15 +19,20 @@ export default async function init() {
   // Wait for custom elements to be defined
   await customElements.whenDefined('game-settings');
   await customElements.whenDefined('number-card-container');
+  await customElements.whenDefined('number-card');
   
-  // Small delay to ensure components are fully initialized
-  await new Promise(resolve => setTimeout(resolve, 100));
+  // Longer delay for iPad/Safari to ensure components are fully initialized
+  await new Promise(resolve => {
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+      // iPad needs more time
+      setTimeout(resolve, 300);
+    } else {
+      setTimeout(resolve, 100);
+    }
+  });
   
-  // Clear any default containers from HTML before restoring state
+  // Don't clear containers immediately - check if we have saved state first
   const containerWrapper = document.getElementById('container-wrapper');
-  if (containerWrapper) {
-    containerWrapper.innerHTML = '';
-  }
   
   // Try to load saved state
   const savedState = await loadGameState();
@@ -35,18 +40,41 @@ export default async function init() {
   
   if (savedState && savedState.settings) {
     console.log('Restoring saved game state...');
+    // Clear containers only when we have saved state to restore
+    if (containerWrapper) {
+      containerWrapper.innerHTML = '';
+    }
     await restoreGameState(savedState);
   } else {
-    console.log('No saved state found, applying default settings...');
-    // Apply default settings when no saved state exists
-    const defaultSettings = {
-      numberOfContainers: 1,
-      containers: [
-        { cards: 5, minRange: 0, maxRange: 100, winningMode: 'asc' }
-      ]
-    };
-    await updateContainers(defaultSettings);
-    // Save the default state
+    console.log('No saved state found, checking for existing containers...');
+    // Check if there are existing containers in HTML
+    const existingContainers = containerWrapper ? containerWrapper.querySelectorAll('number-card-container') : [];
+    
+    if (existingContainers.length > 0) {
+      console.log('Using existing containers from HTML');
+      // Initialize existing containers
+      existingContainers.forEach(container => {
+        const totalCards = parseInt(container.getAttribute('total-cards')) || 5;
+        const minRange = parseInt(container.getAttribute('min-range')) || 0;
+        const maxRange = parseInt(container.getAttribute('max-range')) || 100;
+        const numbers = generateRandomNumbers(Math.min(totalCards, 8), minRange, maxRange);
+        container.setNumbers(numbers);
+      });
+    } else {
+      console.log('Creating default containers...');
+      // Clear and create default containers
+      if (containerWrapper) {
+        containerWrapper.innerHTML = '';
+      }
+      const defaultSettings = {
+        numberOfContainers: 1,
+        containers: [
+          { cards: 5, minRange: 0, maxRange: 100, winningMode: 'asc' }
+        ]
+      };
+      await updateContainers(defaultSettings);
+    }
+    // Save the state
     await saveGameState();
   }
   
@@ -96,9 +124,13 @@ async function restoreGameState(state) {
   }
   
   // Wait for containers to be fully rendered and connected
-  await new Promise(resolve => requestAnimationFrame(() => {
-    setTimeout(resolve, 200);
-  }));
+  // iPad needs extra time for shadow DOM to initialize
+  await new Promise(resolve => {
+    requestAnimationFrame(() => {
+      const delay = /iPad|iPhone|iPod/.test(navigator.userAgent) ? 500 : 200;
+      setTimeout(resolve, delay);
+    });
+  });
   
   // Restore container states (including card positions and original numbers)
   if (state.containers && state.containers.length > 0) {
@@ -141,7 +173,9 @@ async function updateContainers(settings) {
   });
   
   // Wait for containers to initialize then save state
-  await new Promise(resolve => setTimeout(resolve, 200));
+  // iPad needs more time
+  const initDelay = /iPad|iPhone|iPod/.test(navigator.userAgent) ? 400 : 200;
+  await new Promise(resolve => setTimeout(resolve, initDelay));
   await saveGameState();
 }
 

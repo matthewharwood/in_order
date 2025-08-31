@@ -1,5 +1,8 @@
 import { generateRandomNumbers } from '../utils/randomNumbers.js';
 import { debouncedSave } from '../utils/stateManager.js';
+import { audioManager } from '../utils/audioManager.js';
+import { animate } from 'animejs';
+import { isIPad, getIPadDelay } from '../utils/ipadFix.js';
 
 export class NumberCardContainer extends HTMLElement {
   constructor() {
@@ -466,20 +469,18 @@ export class NumberCardContainer extends HTMLElement {
           placeholder.remove();
         }
         
-        // Check if cards are in order (with small delay to ensure DOM is updated)
+        // Check if cards are in order immediately for iPad audio
         console.log('Drop event: Calling checkOrder');
         this.isUserInteraction = true; // Mark as user interaction
-        // Use requestAnimationFrame to ensure DOM updates before checking
-        requestAnimationFrame(() => {
-          console.log('Executing checkOrder after DOM update');
-          this.checkOrder();
-          // Keep the flag true a bit longer to ensure audio plays
-          setTimeout(() => {
-            this.isUserInteraction = false; // Reset flag after a short delay
-          }, 100);
-          // Save state after every card movement
-          debouncedSave();
-        });
+        
+        // Check immediately to maintain user gesture chain for audio
+        this.checkOrder();
+        
+        // Reset flag and save state after a short delay
+        setTimeout(() => {
+          this.isUserInteraction = false; // Reset flag
+          debouncedSave(); // Save state
+        }, 100);
       });
     });
 
@@ -487,6 +488,9 @@ export class NumberCardContainer extends HTMLElement {
     this.addEventListener('card-drag-start', (e) => {
       const card = e.detail.card;
       const slot = card.parentElement;
+      
+      // Prepare audio during drag start (important for iPad)
+      audioManager.prepareAudioForPlayback();
       
       // Add placeholder when card is dragged out
       setTimeout(() => {
@@ -601,26 +605,9 @@ export class NumberCardContainer extends HTMLElement {
       
       // Play winner sound ONLY if this was triggered by user interaction
       if (this.isUserInteraction) {
-        try {
-          // Create audio element with correct path
-          const audioPath = 'img/winner.mp3';
-          console.log('Playing winner sound from:', audioPath);
-          
-          // Create and play audio immediately
-          const winnerSound = new Audio(audioPath);
-          winnerSound.volume = 0.25;
-          
-          // Play the sound immediately without cloning (Audio elements don't need cloning)
-          winnerSound.play().then(() => {
-            console.log('✅ Winner sound playing successfully!');
-          }).catch(error => {
-            console.error('❌ Audio play failed:', error);
-            // Browser may block autoplay, but since user just dragged a card, it should work
-            console.log('Note: Browser may have blocked autoplay, but user interaction just occurred');
-          });
-        } catch (error) {
-          console.error('❌ Error creating or playing audio:', error);
-        }
+        console.log('User interaction detected, playing winner sound...');
+        // Use the audio manager which handles iPad/iOS properly
+        audioManager.playWinnerSound();
       } else {
         console.log('Skipping audio - not a user interaction');
       }
@@ -631,6 +618,11 @@ export class NumberCardContainer extends HTMLElement {
         bubbles: true,
         composed: true
       }));
+      
+      // Animate container down after a short delay
+      setTimeout(() => {
+        this.animateContainerDown();
+      }, 1500);
     } else {
       statusMessage.className = 'status-message';
       container.classList.remove('winner');
@@ -685,6 +677,8 @@ export class NumberCardContainer extends HTMLElement {
   setState(state) {
     if (!state) return;
     
+    console.log('[setState] Restoring container state:', state);
+    
     // Set attributes
     if (state.attributes) {
       if (state.attributes.totalCards) this.setAttribute('total-cards', state.attributes.totalCards);
@@ -693,7 +687,7 @@ export class NumberCardContainer extends HTMLElement {
       if (state.attributes.winningMode) this.setAttribute('winning-mode', state.attributes.winningMode);
     }
     
-    // Set the original numbers and current order
+    // Set the original numbers
     if (state.originalNumbers) {
       this._numbers = state.originalNumbers;
     }
@@ -702,47 +696,151 @@ export class NumberCardContainer extends HTMLElement {
     this.render();
     this.setupDragAndDrop();
     
-    // Then rearrange cards to match the saved order
-    if (state.currentOrder && state.currentOrder.length > 0) {
-      this.restoreCardOrder(state.currentOrder);
-    }
+    // Wait for render to complete, especially on iPad
+    const restoreDelay = getIPadDelay(100);
     
-    // Check if it was a winner state
-    if (state.isWinner) {
-      // Don't play audio when restoring state
-      this.isUserInteraction = false;
-      this.checkOrder();
-    }
+    setTimeout(() => {
+      // Verify shadow DOM is ready
+      if (!this.shadowRoot || !this.shadowRoot.getElementById('cardsArea')) {
+        console.error('[setState] Shadow DOM not ready after delay');
+        return;
+      }
+      
+      // Then rearrange cards to match the saved order
+      if (state.currentOrder && state.currentOrder.length > 0) {
+        this.restoreCardOrder(state.currentOrder);
+      }
+      
+      // Check if it was a winner state
+      if (state.isWinner) {
+        // Don't play audio when restoring state
+        this.isUserInteraction = false;
+        this.checkOrder();
+      }
+    }, restoreDelay);
   }
 
   restoreCardOrder(savedOrder) {
     const cardsArea = this.shadowRoot.getElementById('cardsArea');
+    if (!cardsArea) {
+      console.error('[restoreCardOrder] Cards area not found');
+      return;
+    }
+    
     const slots = cardsArea.querySelectorAll('.card-slot');
+    if (!slots || slots.length === 0) {
+      console.error('[restoreCardOrder] No slots found');
+      return;
+    }
     
-    // Create a map of value to card element
-    const cardMap = new Map();
-    const allCards = cardsArea.querySelectorAll('number-card');
-    allCards.forEach(card => {
-      const value = parseInt(card.getValue());
-      cardMap.set(value, card);
+    console.log('[restoreCardOrder] Restoring order:', savedOrder);
+    
+    // Wait a frame for cards to be ready
+    requestAnimationFrame(() => {
+      const allCards = cardsArea.querySelectorAll('number-card');
+      
+      if (!allCards || allCards.length === 0) {
+        console.warn('[restoreCardOrder] No cards found - skipping restore');
+        return;
+      }
+      
+      // Create a map of value to card element
+      const cardMap = new Map();
+      allCards.forEach(card => {
+        const value = parseInt(card.getValue());
+        if (!isNaN(value)) {
+          cardMap.set(value, card);
+        }
+      });
+      
+      console.log(`[restoreCardOrder] Found ${cardMap.size} cards`);
+      
+      // Collect cards to move
+      const moves = [];
+      savedOrder.forEach((value, targetIndex) => {
+        if (targetIndex < slots.length && cardMap.has(value)) {
+          moves.push({ card: cardMap.get(value), targetSlot: slots[targetIndex] });
+        }
+      });
+      
+      // Clear all slots first (remove placeholders)
+      slots.forEach(slot => {
+        const placeholder = slot.querySelector('.slot-placeholder');
+        if (placeholder) placeholder.remove();
+        slot.classList.remove('occupied');
+      });
+      
+      // Use document fragment to batch DOM operations
+      const fragment = document.createDocumentFragment();
+      
+      // Temporarily move all cards to fragment
+      allCards.forEach(card => {
+        fragment.appendChild(card);
+      });
+      
+      // Place cards in correct slots
+      moves.forEach(({ card, targetSlot }) => {
+        targetSlot.appendChild(card);
+        targetSlot.classList.add('occupied');
+      });
+      
+      console.log('[restoreCardOrder] Order restored successfully');
     });
+  }
+  
+  animateContainerDown() {
+    // Get the container wrapper and this container's position
+    const containerWrapper = document.getElementById('container-wrapper');
+    if (!containerWrapper) return;
     
-    // Clear all slots first
-    slots.forEach(slot => {
-      const placeholder = slot.querySelector('.slot-placeholder');
-      if (placeholder) placeholder.remove();
-      const card = slot.querySelector('number-card');
-      if (card) card.remove();
-    });
+    // Create a new container with the same settings
+    const newContainer = document.createElement('number-card-container');
+    newContainer.setAttribute('total-cards', this.getAttribute('total-cards'));
+    newContainer.setAttribute('min-range', this.getAttribute('min-range'));
+    newContainer.setAttribute('max-range', this.getAttribute('max-range'));
+    newContainer.setAttribute('winning-mode', this.getAttribute('winning-mode'));
     
-    // Place cards in the saved order
-    savedOrder.forEach((value, index) => {
-      if (index < slots.length && cardMap.has(value)) {
-        const card = cardMap.get(value);
-        slots[index].appendChild(card);
-        slots[index].classList.add('occupied');
+    // Insert new container at the top
+    containerWrapper.insertBefore(newContainer, containerWrapper.firstChild);
+    
+    // Generate numbers for the new container
+    const totalCards = Math.min(parseInt(this.getAttribute('total-cards')) || 5, 8);
+    const minRange = parseInt(this.getAttribute('min-range')) || 0;
+    const maxRange = parseInt(this.getAttribute('max-range')) || 100;
+    const numbers = generateRandomNumbers(totalCards, minRange, maxRange);
+    
+    // Wait for the new container to be ready then set numbers
+    setTimeout(() => {
+      newContainer.setNumbers(numbers);
+    }, 100);
+    
+    // Animate this completed container down
+    animate(this, {
+      translateY: [0, 250],
+      opacity: [1, 0.6],
+      scale: [1, 0.95],
+      duration: 800,
+      easing: 'easeOutCubic',
+      complete: () => {
+        // Keep the container visible but moved down
+        this.style.transform = 'translateY(250px) scale(0.95)';
+        this.style.opacity = '0.6';
+        this.style.pointerEvents = 'none';
       }
     });
+    
+    // Animate the new container in
+    animate(newContainer, {
+      translateY: [-100, 0],
+      opacity: [0, 1],
+      duration: 600,
+      easing: 'easeOutCubic'
+    });
+    
+    // Save the state after creating new container
+    setTimeout(() => {
+      debouncedSave();
+    }, 1000);
   }
 }
 

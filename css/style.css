@@ -358,6 +358,22 @@ textarea {
   }
 }
 
+/* Container wrapper for stacking animations */
+#container-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-4);
+  min-height: 400px;
+}
+
+#container-wrapper number-card-container {
+  position: relative;
+  margin-bottom: var(--space-4);
+  transition: all 0.3s ease;
+}
+
 /* Medieval border decoration */
 body::before {
   content: "";

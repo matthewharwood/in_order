@@ -1,3 +1,5 @@
+import { audioManager } from '../utils/audioManager.js';
+
 export class NumberCard extends HTMLElement {
   constructor() {
     super();
@@ -278,6 +280,9 @@ export class NumberCard extends HTMLElement {
       this.isDragging = true;
       card.classList.add('dragging');
       
+      // Prepare audio during drag start (important for iPad/iOS)
+      audioManager.prepareAudioForPlayback();
+      
       // Store the card's value and reference
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', this.getValue());
@@ -326,6 +331,9 @@ export class NumberCard extends HTMLElement {
       // Prevent default to avoid scrolling
       e.preventDefault();
       e.stopPropagation();
+      
+      // Prepare audio during touch start (critical for iPad)
+      audioManager.prepareAudioForPlayback();
       
       const touch = e.touches[0];
       touchItem = this;
@@ -586,15 +594,14 @@ export class NumberCard extends HTMLElement {
       const container = shadowRoot.host;
       console.log('Touch drop: Calling checkOrder on container');
       container.isUserInteraction = true; // Mark as user interaction
-      // Use requestAnimationFrame to ensure DOM updates before checking
-      requestAnimationFrame(() => {
-        console.log('Executing checkOrder after touch DOM update');
-        container.checkOrder();
-        // Keep the flag true a bit longer to ensure audio plays
-        setTimeout(() => {
-          container.isUserInteraction = false; // Reset flag after a short delay
-        }, 100);
-      });
+      
+      // Check immediately to maintain user gesture chain for iPad audio
+      container.checkOrder();
+      
+      // Reset flag after a short delay
+      setTimeout(() => {
+        container.isUserInteraction = false; // Reset flag
+      }, 100);
     } else {
       console.error('Could not find container to check order');
     }
