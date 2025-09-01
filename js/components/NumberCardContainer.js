@@ -105,8 +105,10 @@ class NumberCardContainer extends HTMLElement {
         }
 
         .container.drag-active {
-          background: var(--color-warning-bg, #fef9c3);
-          border: 2px dashed var(--color-warning-border, #fde047);
+          background: var(--color-surface-hover, rgba(250, 204, 21, 0.1));
+          border: 2px dashed var(--color-primary, #facc15);
+          box-shadow: 0 0 20px rgba(250, 204, 21, 0.2);
+          transition: all 0.2s ease;
         }
 
         .title {
@@ -145,7 +147,7 @@ class NumberCardContainer extends HTMLElement {
         .card-slot.empty {
           border: 3px dashed var(--color-border, #d6d3d1);
           border-radius: var(--radius-lg, 0.5rem);
-          background: var(--color-background, #ffffff);
+          background: var(--color-surface, #f5f5f4);
           opacity: 0.5;
         }
 
@@ -165,9 +167,11 @@ class NumberCardContainer extends HTMLElement {
         }
 
         .card-slot.drag-over {
-          background: var(--color-success-bg, #ecfdf5);
+          background: var(--color-surface-hover, rgba(16, 185, 129, 0.1));
           border-color: var(--color-success, #10b981);
           opacity: 1;
+          transform: scale(1.05);
+          transition: all 0.2s ease;
         }
 
         .controls {
@@ -234,8 +238,8 @@ class NumberCardContainer extends HTMLElement {
         <div class="controls">
           <button type="button" id="shuffle-btn">Shuffle</button>
           <button type="button" id="new-numbers-btn" class="secondary">New Numbers</button>
-          <button type="button" id="sort-asc-btn" class="secondary">Sort ‘</button>
-          <button type="button" id="sort-desc-btn" class="secondary">Sort “</button>
+          <button type="button" id="sort-asc-btn" class="secondary">Sort ï¿½</button>
+          <button type="button" id="sort-desc-btn" class="secondary">Sort ï¿½</button>
         </div>
       </div>
     `;
@@ -259,6 +263,9 @@ class NumberCardContainer extends HTMLElement {
     const container = this.shadowRoot.getElementById('container');
     const slots = this.shadowRoot.querySelectorAll('.card-slot');
 
+    // Add touch support for mobile
+    this.setupTouchSupport();
+    
     slots.forEach(slot => {
       slot.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -270,12 +277,17 @@ class NumberCardContainer extends HTMLElement {
       });
 
       slot.addEventListener('dragleave', () => {
-        slot.classList.remove('drag-over');
+        setTimeout(() => {
+          slot.classList.remove('drag-over');
+        }, 50);
       });
 
       slot.addEventListener('drop', async (e) => {
         e.preventDefault();
-        slot.classList.remove('drag-over');
+        // Remove drag-over class with slight delay for visual feedback
+        setTimeout(() => {
+          slot.classList.remove('drag-over');
+        }, 100);
 
         const draggedValue = e.dataTransfer.getData('text/plain');
         const draggedId = e.dataTransfer.getData('card-id');
@@ -310,13 +322,19 @@ class NumberCardContainer extends HTMLElement {
       });
     });
 
-    // Handle drag start/end for visual feedback
+    // Handle drag start/end for visual feedback with timeout
+    let dragTimeout;
+    
     container.addEventListener('dragstart', () => {
+      clearTimeout(dragTimeout);
       container.classList.add('drag-active');
     });
 
     container.addEventListener('dragend', () => {
-      container.classList.remove('drag-active');
+      // Remove feedback after a short delay
+      dragTimeout = setTimeout(() => {
+        container.classList.remove('drag-active');
+      }, 100);
     });
   }
 
@@ -386,6 +404,123 @@ class NumberCardContainer extends HTMLElement {
     } catch (error) {
       console.error('Error clearing state:', error);
     }
+  }
+
+  setupTouchSupport() {
+    // Add touch event support for mobile drag and drop
+    const cards = this.shadowRoot.querySelectorAll('number-card');
+    
+    cards.forEach(card => {
+      let touchItem = null;
+      let touchOffset = { x: 0, y: 0 };
+      let originalSlot = null;
+      
+      card.addEventListener('touchstart', (e) => {
+        const touch = e.touches[0];
+        const rect = card.getBoundingClientRect();
+        
+        touchOffset.x = touch.clientX - rect.left;
+        touchOffset.y = touch.clientY - rect.top;
+        
+        // Create a clone for dragging
+        touchItem = card.cloneNode(true);
+        touchItem.style.position = 'fixed';
+        touchItem.style.zIndex = '9999';
+        touchItem.style.pointerEvents = 'none';
+        touchItem.style.opacity = '0.8';
+        touchItem.style.transform = 'scale(1.05) rotate(2deg)';
+        touchItem.style.left = `${touch.clientX - touchOffset.x}px`;
+        touchItem.style.top = `${touch.clientY - touchOffset.y}px`;
+        
+        document.body.appendChild(touchItem);
+        
+        originalSlot = card.parentElement;
+        card.style.opacity = '0.3';
+        
+        // Add drag-active class to container
+        const container = this.shadowRoot.getElementById('container');
+        container.classList.add('drag-active');
+        
+        e.preventDefault();
+      }, { passive: false });
+      
+      card.addEventListener('touchmove', (e) => {
+        if (!touchItem) return;
+        
+        const touch = e.touches[0];
+        touchItem.style.left = `${touch.clientX - touchOffset.x}px`;
+        touchItem.style.top = `${touch.clientY - touchOffset.y}px`;
+        
+        // Find element under touch point
+        touchItem.style.display = 'none';
+        const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+        touchItem.style.display = 'block';
+        
+        // Check if over a valid drop target
+        const dropSlot = elementBelow?.closest('.card-slot');
+        if (dropSlot && dropSlot.getRootNode() === this.shadowRoot) {
+          // Clear all drag-over classes
+          this.shadowRoot.querySelectorAll('.card-slot').forEach(s => {
+            s.classList.remove('drag-over');
+          });
+          
+          // Add drag-over to current slot
+          if (!dropSlot.querySelector('number-card') || dropSlot !== originalSlot) {
+            dropSlot.classList.add('drag-over');
+          }
+        }
+        
+        e.preventDefault();
+      }, { passive: false });
+      
+      card.addEventListener('touchend', async (e) => {
+        if (!touchItem) return;
+        
+        const touch = e.changedTouches[0];
+        
+        // Find drop target
+        touchItem.style.display = 'none';
+        const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+        touchItem.style.display = 'block';
+        
+        const dropSlot = elementBelow?.closest('.card-slot');
+        
+        // Clean up
+        document.body.removeChild(touchItem);
+        touchItem = null;
+        card.style.opacity = '1';
+        
+        // Remove drag-active class
+        const container = this.shadowRoot.getElementById('container');
+        setTimeout(() => {
+          container.classList.remove('drag-active');
+        }, 100);
+        
+        // Clear all drag-over classes
+        this.shadowRoot.querySelectorAll('.card-slot').forEach(s => {
+          setTimeout(() => {
+            s.classList.remove('drag-over');
+          }, 100);
+        });
+        
+        // Handle drop
+        if (dropSlot && dropSlot.getRootNode() === this.shadowRoot && dropSlot !== originalSlot) {
+          const targetCard = dropSlot.querySelector('number-card');
+          
+          if (targetCard) {
+            // Swap cards
+            originalSlot.appendChild(targetCard);
+          }
+          
+          dropSlot.appendChild(card);
+          
+          // Update state
+          await this.updateNumbersFromDOM();
+        }
+        
+        e.preventDefault();
+      }, { passive: false });
+    });
   }
 
   getNumbers() {
