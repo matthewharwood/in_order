@@ -1,9 +1,12 @@
+import { animate } from '../vendor/anime.esm.js';
+
 class NumberCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
     this._value = 0;
     this._isDragging = false;
+    this._currentAnimation = null;
   }
 
   static get observedAttributes() {
@@ -47,10 +50,12 @@ class NumberCard extends HTMLElement {
           display: flex;
           align-items: center;
           justify-content: center;
-          cursor: ${draggable ? 'grab' : 'default'};
-          transition: all 0.2s ease;
+          cursor: ${draggable ? 'grab' : 'pointer'};
+          transition: filter 200ms ease-out, box-shadow 200ms ease-out, border-color 200ms ease-out;
           position: relative;
-          box-shadow: var(--shadow-md);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+          will-change: transform, opacity;
+          overflow: hidden;
         }
 
         .card.small {
@@ -72,20 +77,41 @@ class NumberCard extends HTMLElement {
         }
 
         .card:hover {
-          transform: ${draggable ? 'translateY(-4px)' : 'none'};
-          box-shadow: ${draggable ? 'var(--shadow-lg)' : 'var(--shadow-md)'};
+          filter: brightness(1.1);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
           border-color: var(--color-primary, #facc15);
         }
 
+        .card:active {
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+
         .card.dragging {
-          opacity: 0.5;
+          opacity: 0.9;
           cursor: grabbing;
-          transform: scale(1.05);
         }
 
         .card.drag-over {
           border-color: var(--color-success, #10b981);
           background: var(--color-success-bg, #ecfdf5);
+        }
+
+        .ripple-container {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          overflow: hidden;
+          pointer-events: none;
+        }
+
+        .ripple {
+          position: absolute;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.6);
+          transform: scale(0);
+          pointer-events: none;
         }
 
         .number {
@@ -103,6 +129,7 @@ class NumberCard extends HTMLElement {
 
       <div class="card ${size}" draggable="${draggable}">
         <span class="number">${value}</span>
+        <div class="ripple-container"></div>
       </div>
     `;
   }
@@ -110,6 +137,51 @@ class NumberCard extends HTMLElement {
   setupDragHandlers() {
     const card = this.shadowRoot.querySelector('.card');
     
+    // Hover animations
+    card.addEventListener('mouseenter', () => {
+      if (this._currentAnimation) this._currentAnimation.pause();
+      
+      this._currentAnimation = animate(card, {
+        scale: [1, 1.05],
+        rotate: [0, 1, 0],
+        duration: 200,
+        easing: 'easeOutCubic'
+      });
+    });
+
+    card.addEventListener('mouseleave', () => {
+      if (this._currentAnimation) this._currentAnimation.pause();
+      
+      this._currentAnimation = animate(card, {
+        scale: [1.05, 1],
+        rotate: [0, -1, 0],
+        duration: 300,
+        easing: 'easeOutCubic'
+      });
+    });
+
+    // Click animations
+    card.addEventListener('pointerdown', (e) => {
+      animate(card, {
+        scale: [1, 0.95],
+        duration: 50,
+        easing: 'easeOutQuad'
+      });
+    });
+
+    card.addEventListener('pointerup', () => {
+      animate(card, {
+        scale: [0.95, 1.02, 1],
+        duration: 300,
+        easing: 'easeOutElastic'
+      });
+    });
+
+    card.addEventListener('click', (e) => {
+      this.createRipple(e);
+    });
+    
+    // Drag animations
     card.addEventListener('dragstart', (e) => {
       if (this.getAttribute('draggable') === 'false') {
         e.preventDefault();
@@ -117,32 +189,105 @@ class NumberCard extends HTMLElement {
       }
       this._isDragging = true;
       card.classList.add('dragging');
+      
+      // Lift effect animation
+      animate(card, {
+        scale: [1, 1.05],
+        rotate: [0, 2],
+        duration: 150,
+        easing: 'easeOutCubic'
+      });
+      
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', this.getAttribute('value'));
       e.dataTransfer.setData('card-id', this.id || '');
       
       // Store reference to dragged element
-      this.getRootNode().host._draggedElement = this;
+      if (this.getRootNode().host) {
+        this.getRootNode().host._draggedElement = this;
+      }
     });
 
     card.addEventListener('dragend', () => {
       this._isDragging = false;
       card.classList.remove('dragging');
+      
+      // Drop effect animation
+      animate(card, {
+        scale: [1.05, 1],
+        rotate: [2, 0],
+        duration: 200,
+        easing: 'easeOutCubic'
+      });
     });
 
     card.addEventListener('dragover', (e) => {
       if (this.getAttribute('draggable') === 'false') return;
       e.preventDefault();
-      card.classList.add('drag-over');
+      
+      if (!card.classList.contains('drag-over')) {
+        card.classList.add('drag-over');
+        
+        // Pulse effect on drag over
+        animate(card, {
+          scale: [1, 1.05, 1],
+          duration: 400,
+          easing: 'easeInOutQuad'
+        });
+      }
     });
 
     card.addEventListener('dragleave', () => {
       card.classList.remove('drag-over');
+      
+      // Scale back animation
+      animate(card, {
+        scale: [1.05, 1],
+        duration: 200,
+        easing: 'easeOutCubic'
+      });
     });
 
     card.addEventListener('drop', (e) => {
       e.preventDefault();
       card.classList.remove('drag-over');
+      
+      // Success drop animation
+      animate(card, {
+        scale: [1, 0.95, 1.02, 1],
+        duration: 400,
+        easing: 'easeOutElastic'
+      });
+    });
+  }
+
+  createRipple(event) {
+    const card = this.shadowRoot.querySelector('.card');
+    const rippleContainer = card.querySelector('.ripple-container');
+    if (!rippleContainer) return;
+    
+    const rect = card.getBoundingClientRect();
+    const ripple = document.createElement('div');
+    ripple.className = 'ripple';
+    
+    const size = Math.max(rect.width, rect.height) * 2;
+    ripple.style.width = ripple.style.height = size + 'px';
+    
+    const x = event.clientX - rect.left - size / 2;
+    const y = event.clientY - rect.top - size / 2;
+    
+    ripple.style.left = x + 'px';
+    ripple.style.top = y + 'px';
+    
+    rippleContainer.appendChild(ripple);
+    
+    // Animate ripple
+    animate(ripple, {
+      scale: [0, 1],
+      opacity: [0.6, 0],
+      duration: 600,
+      easing: 'easeOutQuad',
+      complete: () => ripple.remove()
     });
   }
 
