@@ -2,7 +2,7 @@
 import './utils/themeManager.js';
 
 // Import AnimeJS for animations
-import { animate, stagger } from './vendor/anime.esm.js';
+import { animate, stagger } from 'animejs';
 
 // Import web components
 import './components/ThemeToggle.js';

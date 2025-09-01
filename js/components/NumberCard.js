@@ -1,4 +1,4 @@
-import { animate } from '../vendor/anime.esm.js';
+import { animate } from 'animejs';
 
 class NumberCard extends HTMLElement {
   constructor() {
